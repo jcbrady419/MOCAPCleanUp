@@ -1,0 +1,397 @@
+from pyfbsdk import *
+from pyfbsdk_additions import *
+
+# Class for scene operations (functionality)
+class SceneOperations:
+    ALLOWED_PREFIXES = ["Hips", "Spine", "Left", "Right", "Neck", "Head", "Position"]
+
+    def delete_parent_and_children(self, parent_name):
+        parent_obj = FBFindModelByLabelName(parent_name)
+        if not parent_obj:
+            FBMessageBox("Error", f"Object '{parent_name}' not found.", "OK")
+            return
+
+        children = list(parent_obj.Children)
+        for child in children:
+            child.FBDelete()
+        parent_obj.FBDelete()
+        FBMessageBox("Success", f"Deleted '{parent_name}' and all its children.", "OK")
+
+    def clean_skeleton(self, parent_name):
+        parent_obj = FBFindModelByLabelName(parent_name)
+        if not parent_obj:
+            FBMessageBox("Error", f"Object '{parent_name}' not found.", "OK")
+            return
+
+        children = list(parent_obj.Children)
+        for child in children:
+            if not any(prefix in child.Name for prefix in self.ALLOWED_PREFIXES):
+                child.FBDelete()
+        FBMessageBox("Success", f"Cleaned children of '{parent_name}'", "OK")
+
+    def zero_out_skeleton_rotation(self, skeleton_name):
+        parent_obj = FBFindModelByLabelName(skeleton_name)
+        if not parent_obj:
+            FBMessageBox("Error", f"Skeleton '{skeleton_name}' not found.", "OK")
+            return
+
+        hips_obj = next((child for child in parent_obj.Children if child.Name.startswith("Hips")), None)
+        if not hips_obj:
+            FBMessageBox("Error", f"No 'Hips' object found under '{skeleton_name}'", "OK")
+            return
+
+        self._zero_out_rotation(hips_obj)
+        FBMessageBox("Success", f"Zeroed out the rotation for 'Hips' and its children for '{skeleton_name}'.", "OK")
+
+    def _zero_out_rotation(self, obj):
+        obj.Rotation = FBVector3d(0.0, 0.0, 0.0)
+        for child in obj.Children:
+            self._zero_out_rotation(child)
+
+    def rotate_skeleton_axis(self, skeleton_name, axis, degrees):
+        parent_obj = FBFindModelByLabelName(skeleton_name)
+        if not parent_obj:
+            FBMessageBox("Error", f"Skeleton '{skeleton_name}' not found.", "OK")
+            return
+    
+        hips_obj = next((child for child in parent_obj.Children if child.Name == "Hips"), None)
+        if not hips_obj:
+            FBMessageBox("Error", f"No 'Hips' object found under '{skeleton_name}'", "OK")
+            return
+    
+        current_rotation = hips_obj.Rotation
+    
+        if axis == 'X':
+            new_rotation = FBVector3d(current_rotation[0] + degrees, current_rotation[1], current_rotation[2])
+        elif axis == 'Y':
+            new_rotation = FBVector3d(current_rotation[0], current_rotation[1] + degrees, current_rotation[2])
+        elif axis == 'Z':
+            new_rotation = FBVector3d(current_rotation[0], current_rotation[1], current_rotation[2] + degrees)
+    
+        hips_obj.Rotation = new_rotation
+        FBMessageBox("Success", f"Rotated '{skeleton_name}' by {degrees} degrees on {axis}-axis.", "OK")
+
+    def key_rotation_for_hips_children(self, skeleton_name):
+        parent_obj = FBFindModelByLabelName(skeleton_name)
+        if not parent_obj:
+            FBMessageBox("Error", f"Skeleton '{skeleton_name}' not found.", "OK")
+            return
+
+        hips_obj = next((child for child in parent_obj.Children if child.Name == "Hips"), None)
+        if not hips_obj:
+            FBMessageBox("Error", f"No 'Hips' object found under '{skeleton_name}'", "OK")
+            return
+
+        self._key_rotation_recursive(hips_obj, 1)
+        FBMessageBox("Success", f"Keyed the rotation for all descendants of 'Hips' at frame 1 for '{skeleton_name}'.", "OK")
+
+    def _key_rotation_recursive(self, obj, frame):
+        prop = obj.Rotation
+        anim_node = prop.GetAnimationNode()
+        if anim_node:
+            for i, node in enumerate(anim_node.Nodes):
+                curve = node.FCurve
+                if curve:
+                    curve.KeyAdd(FBTime(0, 0, 0, frame), prop.Data[i])
+
+        for child in obj.Children:
+            self._key_rotation_recursive(child, frame)
+
+    def characterize_skeleton(self, character_name, skeleton_name):
+        character = FBCharacter(character_name)
+        bone_mapping = {
+            "HipsLink": "Hips",
+            "LeftUpLegLink": "LeftUpLeg",
+            "LeftLegLink": "LeftLeg",
+            "LeftFootLink": "LeftFoot",
+            "LeftToeBaseLink": "LeftToeBase",
+            "RightUpLegLink": "RightUpLeg",
+            "RightLegLink": "RightLeg",
+            "RightFootLink": "RightFoot",
+            "RightToeBaseLink": "RightToeBase",
+            "SpineLink": "Spine",
+            "Spine1Link": "Spine1",
+            "Spine2Link": "Spine2",
+            "Spine3Link": "Spine3",
+            "LeftShoulderLink": "LeftShoulder",
+            "LeftArmLink": "LeftArm",
+            "LeftForeArmLink": "LeftForeArm",
+            "LeftHandLink": "LeftHand",
+            "RightShoulderLink": "RightShoulder",
+            "RightArmLink": "RightArm",
+            "RightForeArmLink": "RightForeArm",
+            "RightHandLink": "RightHand",
+            "HeadLink": "Head",
+            "NeckLink": "Neck",
+            "Neck1Link": "Neck1",
+            "RightHandMiddle1Link": "RightHandMiddle1",
+            "RightHandMiddle2Link": "RightHandMiddle2",
+            "RightHandMiddle3Link": "RightHandMiddle3",
+            "RightHandMiddle4Link": "RightHandMiddle4",
+            "RightInHandRingLink": "RightHandRing",
+            "RightHandRing1Link": "RightHandRing1",
+            "RightHandRing2Link": "RightHandRing2",
+            "RightHandRing3Link": "RightHandRing3",
+            "RightHandRing4Link": "RightHandRing4",
+            "RightInHandPinkyLink": "RightHandPinky",
+            "RightHandPinky1Link": "RightHandPinky1",
+            "RightHandPinky2Link": "RightHandPinky2",
+            "RightHandPinky3Link": "RightHandPinky3",
+            "RightHandPinky4Link": "RightHandPinky4",
+            "RightInHandIndexLink": "RightHandIndex",
+            "RightHandIndex1Link": "RightHandIndex1",
+            "RightHandIndex2Link": "RightHandIndex2",
+            "RightHandIndex3Link": "RightHandIndex3",
+            "RightHandIndex4Link": "RightHandIndex4",
+            "RightHandThumb1Link": "RightHandThumb1",
+            "RightHandThumb2Link": "RightHandThumb2",
+            "RightHandThumb3Link": "RightHandThumb3",
+            "RightHandThumb4Link": "RightHandThumb4",
+            "LeftHandMiddle1Link": "LeftHandMiddle1",
+            "LeftHandMiddle2Link": "LeftHandMiddle2",
+            "LeftHandMiddle3Link": "LeftHandMiddle3",
+            "LeftHandMiddle4Link": "LeftHandMiddle4",
+            "LeftInHandRingLink": "LeftHandRing",
+            "LeftHandRing1Link": "LeftHandRing1",
+            "LeftHandRing2Link": "LeftHandRing2",
+            "LeftHandRing3Link": "LeftHandRing3",
+            "LeftHandRing4Link": "LeftHandRing4",
+            "LeftInHandPinkyLink": "LeftHandPinky",
+            "LeftHandPinky1Link": "LeftHandPinky1",
+            "LeftHandPinky2Link": "LeftHandPinky2",
+            "LeftHandPinky3Link": "LeftHandPinky3",
+            "LeftHandPinky4Link": "LeftHandPinky4",
+            "LeftInHandIndexLink": "LeftHandIndex",
+            "LeftHandIndex1Link": "LeftHandIndex1",
+            "LeftHandIndex2Link": "LeftHandIndex2",
+            "LeftHandIndex3Link": "LeftHandIndex3",
+            "LeftHandIndex4Link": "LeftHandIndex4",
+            "LeftHandThumb1Link": "LeftHandThumb1",
+            "LeftHandThumb2Link": "LeftHandThumb2",
+            "LeftHandThumb3Link": "LeftHandThumb3",
+            "LeftHandThumb4Link": "LeftHandThumb4"
+        }
+
+        for prop, bone in bone_mapping.items():
+            model = FBFindModelByLabelName(f"{skeleton_name}:{bone}")
+            if model:
+                character.PropertyList.Find(prop).append(model)
+
+        if character.SetCharacterizeOn(True):
+            FBMessageBox("Success", f"Characterization succeeded for '{character_name}'.", "OK")
+        else:
+            FBMessageBox("Error", f"Characterization failed for '{character_name}'.", "OK")
+
+
+# Class for the UI
+class SceneCleanupToolUI:
+    def __init__(self):
+        self.operations = SceneOperations()
+
+    # Ensure 'self' is passed as the first argument
+    def PopulateLayout(self, mainLyt):
+        # Create a vertical layout
+        lyt = FBVBoxLayout()
+        mainLyt.AddRegion("main", "main", 
+                          FBAddRegionParam(0, FBAttachType.kFBAttachLeft, ""),
+                          FBAddRegionParam(0, FBAttachType.kFBAttachTop, ""),
+                          FBAddRegionParam(0, FBAttachType.kFBAttachRight, ""),
+                          FBAddRegionParam(0, FBAttachType.kFBAttachBottom, ""))
+        mainLyt.SetControl("main", lyt)
+    
+        # Add a label with centered alignment, bold, and bigger font
+        label = FBLabel()
+        label.Caption = "Get Rid of Non Character Data"
+        label.Justify = FBTextJustify.kFBTextJustifyCenter  # Set text alignment to center
+        label.Style = FBTextStyle.kFBTextStyleBold  # Make the text bold
+        label.FontSize = 14  # Increase the font size
+        lyt.AddRelative(label, 0.05)  # Add the label with relative height
+    
+        # Create buttons and add them to the layout
+        deleteSystemButton = FBButton()
+        deleteSystemButton.Caption = "Delete System"
+        deleteSystemButton.OnClick.Add(self.BtnDeleteSystem)  # Use instance method
+        lyt.AddRelative(deleteSystemButton, 0.1)
+    
+        deleteMarkersButton = FBButton()
+        deleteMarkersButton.Caption = "Delete Unlabeled Markers"
+        deleteMarkersButton.OnClick.Add(self.BtnDeleteUnlabeledMarkers)  # Use instance method
+        lyt.AddRelative(deleteMarkersButton, 0.1)
+        
+        # Add some space between labels
+        spacer = FBLabel()  # Empty label used as spacer
+        spacer.Caption = ""
+        lyt.AddRelative(spacer, 0.03)
+        
+        # Add a label with centered alignment, bold, and bigger font
+        label = FBLabel()
+        label.Caption = "Clean Character Data"
+        label.Justify = FBTextJustify.kFBTextJustifyCenter  # Set text alignment to center
+        label.Style = FBTextStyle.kFBTextStyleBold  # Make the text bold
+        label.FontSize = 14  # Increase the font size
+        lyt.AddRelative(label, 0.05)  # Add the label with relative height
+        
+        # Add a label with centered alignment
+        label = FBLabel()
+        label.Caption = "Enter Skeleton Name"
+        label.Justify = FBTextJustify.kFBTextJustifyCenter  # Set text alignment to center
+        lyt.AddRelative(label, 0.05)  # Add the label with relative height 
+    
+        # Create a text box for skeleton name input
+        skeletonNameEdit = FBEdit()
+        skeletonNameEdit.Text = " "
+        lyt.AddRelative(skeletonNameEdit, 0.1)  # Add the text box to layout
+    
+        # Other buttons for actions
+        cleanSkeletonButton = FBButton()
+        cleanSkeletonButton.Caption = "Clean Skeleton"
+        cleanSkeletonButton.OnClick.Add(lambda control, event: self.BtnCleanSkeleton(control, event, skeletonNameEdit))
+        lyt.AddRelative(cleanSkeletonButton, 0.1)
+    
+        zeroOutSkeletonButton = FBButton()
+        zeroOutSkeletonButton.Caption = "Zero Out Skeleton Rotations"
+        zeroOutSkeletonButton.OnClick.Add(lambda control, event: self.BtnZeroOutSkeletonRotation(control, event, skeletonNameEdit))
+        lyt.AddRelative(zeroOutSkeletonButton, 0.1)
+    
+        # Button for rotating skeleton
+        rotateSkeletonButton = FBButton()
+        rotateSkeletonButton.Caption = "Rotate Skeleton"
+        rotateSkeletonButton.OnClick.Add(lambda control, event: self.BtnRotateSkeleton(control, event, skeletonNameEdit))
+        lyt.AddRelative(rotateSkeletonButton, 0.1)
+    
+        keyDataButton = FBButton()
+        keyDataButton.Caption = "Key Data"
+        keyDataButton.OnClick.Add(lambda control, event: self.BtnKeyData(control, event, skeletonNameEdit))
+        lyt.AddRelative(keyDataButton, 0.1)
+    
+        characterizeSkeletonButton = FBButton()
+        characterizeSkeletonButton.Caption = "Characterize Skeleton"
+        characterizeSkeletonButton.OnClick.Add(lambda control, event: self.BtnCharacterizeSkeleton(control, event, skeletonNameEdit))
+        lyt.AddRelative(characterizeSkeletonButton, 0.1)
+        
+    def rotate_skeleton_popup(self, skeleton_name):
+        # Create the popup window
+        popup = FBCreateUniqueTool("Rotate Skeleton")
+        popup.StartSizeX = 300
+        popup.StartSizeY = 200
+    
+        # Create layout
+        lyt = FBVBoxLayout()
+        popup.AddRegion("main", "main",
+                        FBAddRegionParam(0, FBAttachType.kFBAttachLeft, ""),
+                        FBAddRegionParam(0, FBAttachType.kFBAttachTop, ""),
+                        FBAddRegionParam(0, FBAttachType.kFBAttachRight, ""),
+                        FBAddRegionParam(0, FBAttachType.kFBAttachBottom, ""))
+        popup.SetControl("main", lyt)
+    
+        # Axis selection using buttons acting as toggles
+        axis_label = FBLabel()
+        axis_label.Caption = "Select Axis to Rotate:"
+        lyt.AddRelative(axis_label, 0.1)
+    
+        # Buttons for X, Y, and Z axis selection
+        checkbox_x = FBButton()
+        checkbox_x.Caption = "X"
+        checkbox_x.Style = FBButtonStyle.kFB2States  # Toggle style
+        checkbox_y = FBButton()
+        checkbox_y.Caption = "Y"
+        checkbox_y.Style = FBButtonStyle.kFB2States
+        checkbox_z = FBButton()
+        checkbox_z.Caption = "Z"
+        checkbox_z.Style = FBButtonStyle.kFB2States
+    
+        lyt.AddRelative(checkbox_x, 0.1)
+        lyt.AddRelative(checkbox_y, 0.1)
+        lyt.AddRelative(checkbox_z, 0.1)
+    
+        # Degree entry
+        degree_label = FBLabel()
+        degree_label.Caption = "Enter Degrees to Rotate:"
+        lyt.AddRelative(degree_label, 0.1)
+    
+        degree_input = FBEdit()
+        degree_input.Text = "180"
+        lyt.AddRelative(degree_input, 0.1)
+    
+        # Confirm button
+        confirm_button = FBButton()
+        confirm_button.Caption = "Confirm"
+        lyt.AddRelative(confirm_button, 0.2)
+    
+        def on_confirm(control, event):
+            # Check which axis is selected
+            if checkbox_x.State == 1:
+                axis = "X"
+            elif checkbox_y.State == 1:
+                axis = "Y"
+            elif checkbox_z.State == 1:
+                axis = "Z"
+            else:
+                FBMessageBox("Error", "Please select an axis.", "OK")
+                return
+        
+            # Check and validate degree input
+            try:
+                degree = float(degree_input.Text)
+            except ValueError:
+                FBMessageBox("Error", "Please enter a valid degree value.", "OK")
+                return
+        
+            # Perform the rotation operation
+            self.operations.rotate_skeleton_axis(skeleton_name, axis, degree)
+            FBDestroyTool(popup)  # Close the popup after confirmation
+    
+        # Assign the on_click function to the confirm button
+        confirm_button.OnClick.Add(on_confirm)
+    
+        # Display the tool
+        ShowTool(popup)
+
+    # Button event handlers should be class instance methods
+    def BtnDeleteSystem(self, control, event):
+        self.operations.delete_parent_and_children("System")
+
+    def BtnDeleteUnlabeledMarkers(self, control, event):
+        self.operations.delete_parent_and_children("Unlabeled_Markers")
+
+    def BtnCleanSkeleton(self, control, event, skeletonNameEdit):
+        skeleton_name = skeletonNameEdit.Text
+        self.operations.clean_skeleton(skeleton_name)
+
+    def BtnZeroOutSkeletonRotation(self, control, event, skeletonNameEdit):
+        skeleton_name = skeletonNameEdit.Text
+        self.operations.zero_out_skeleton_rotation(skeleton_name)
+
+    # Updated BtnRotateSkeleton to invoke rotate_skeleton_popup
+    def BtnRotateSkeleton(self, control, event, skeletonNameEdit):
+        skeleton_name = skeletonNameEdit.Text
+        if not skeleton_name:
+            FBMessageBox("Error", "Please enter a skeleton name.", "OK")
+            return
+        
+        # Call the rotate_skeleton_popup method instead of using direct popups
+        self.rotate_skeleton_popup(skeleton_name)
+
+    def BtnKeyData(self, control, event, skeletonNameEdit):
+        skeleton_name = skeletonNameEdit.Text
+        self.operations.key_rotation_for_hips_children(skeleton_name)
+
+    def BtnCharacterizeSkeleton(self, control, event, skeletonNameEdit):
+        skeleton_name = skeletonNameEdit.Text
+        result = FBMessageBoxGetUserValue("Enter Character Name", "Enter the name of the character:", "", FBPopupInputType.kFBPopupString, "OK", "Cancel")
+        if result[0]:  # If the user clicks "OK"
+            character_name = result[1]
+            self.operations.characterize_skeleton(character_name, skeleton_name)
+
+# Tool Creation
+def CreateTool():
+    t = FBCreateUniqueTool("Scene Cleanup Tool")
+    t.StartSizeX = 800
+    t.StartSizeY = 400
+
+    ui = SceneCleanupToolUI()
+    ui.PopulateLayout(t)
+    ShowTool(t)
+
+# Run the tool
+CreateTool()
